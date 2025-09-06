@@ -34,7 +34,7 @@ impl<'a> TryFrom<&'a [AccountInfo]> for InitializeAccounts<'a> {
     type Error = ProgramError;
 
     fn try_from(accounts: &'a [AccountInfo]) -> Result<Self, Self::Error> {
-        let [admin, global_pda, rent_sysvar, system_program, _] = accounts else {
+        let [admin, global_pda, rent_sysvar, system_program] = accounts else {
             return Err(ProgramError::NotEnoughAccountKeys);
         };
 
