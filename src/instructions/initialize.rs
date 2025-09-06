@@ -1,6 +1,7 @@
 use crate::state::Global;
 use pinocchio::{
     account_info::AccountInfo,
+    instruction::{Seed, Signer},
     program_error::ProgramError,
     pubkey::find_program_address,
     sysvars::{rent::Rent, Sysvar},
@@ -62,6 +63,11 @@ impl<'a> Initialize<'a> {
         let global_space = Global::LEN;
         let global_rent = Rent::get()?.minimum_balance(global_space);
 
+        let bump_binding = [self.accounts.bump]; // dev : lives till this function scope, otherwise gets dropped right at Seed::from([x]) due to limited scope
+        let seeds = [Seed::from(b"global"), Seed::from(&bump_binding)];
+
+        let pda_signer = Signer::from(&seeds);
+
         CreateAccount {
             from: self.accounts.admin,
             to: self.accounts.global_pda,
@@ -69,7 +75,7 @@ impl<'a> Initialize<'a> {
             space: global_space as u64,
             owner: &crate::ID,
         }
-        .invoke()?;
+        .invoke_signed(&[pda_signer])?;
 
         //// initialize global pda data
         let mut global_pda_data = self.accounts.global_pda.try_borrow_mut_data()?; // dev-improvements : what if i take AccountInfo in load*() to abstract away try_borrow* logic
