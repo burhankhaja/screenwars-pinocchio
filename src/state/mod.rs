@@ -1,7 +1,5 @@
-pub mod global;
 pub mod challenge;
+pub mod global;
 pub mod user;
 
-pub use global::*;
-pub use challenge::*;
-pub use user::*;
+pub use {challenge::*, global::*, user::*};
