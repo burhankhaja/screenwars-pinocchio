@@ -1,5 +1,7 @@
-use core::mem::size_of;
-use pinocchio::{program_error::ProgramError, pubkey::Pubkey};
+use {
+    core::mem::size_of,
+    pinocchio::{program_error::ProgramError, pubkey::Pubkey},
+};
 
 #[repr(C)]
 #[derive(Default, Debug)]
