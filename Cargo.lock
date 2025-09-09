@@ -2260,6 +2260,7 @@ dependencies = [
  "pinocchio",
  "pinocchio-pubkey",
  "pinocchio-system",
+ "solana-clock",
  "solana-instruction",
  "solana-keypair",
  "solana-kite",
