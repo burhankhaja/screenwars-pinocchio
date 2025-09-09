@@ -1,11 +1,13 @@
-use crate::state::Global;
-use pinocchio::{
-    account_info::AccountInfo,
-    instruction::{Seed, Signer},
-    program_error::ProgramError,
-    pubkey::find_program_address,
-    sysvars::{rent::Rent, Sysvar},
-    ProgramResult,
+use {
+    crate::{custom_errors::ScreenWarErrors, state::Global},
+    pinocchio::{
+        account_info::AccountInfo,
+        instruction::{Seed, Signer},
+        program_error::ProgramError,
+        pubkey::find_program_address,
+        sysvars::{rent::Rent, Sysvar},
+        ProgramResult,
+    },
 };
 
 use pinocchio_system::instructions::CreateAccount;
@@ -42,7 +44,7 @@ impl<'a> TryFrom<&'a [AccountInfo]> for InitializeAccounts<'a> {
         let (global_pda_key, global_bump) = find_program_address(&[b"global"], &crate::ID);
 
         if global_pda_key.ne(global_pda.key()) {
-            return Err(ProgramError::InvalidSeeds);
+            return Err(ScreenWarErrors::InvalidGlobalPDA.into());
         }
 
         Ok(Self {
