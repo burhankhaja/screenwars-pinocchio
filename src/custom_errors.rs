@@ -6,6 +6,10 @@ pub enum ScreenWarErrors {
 
     InvalidChallengePDA,
 
+    InvalidUserPDA,
+
+    InvalidPdaDataLen,
+
     ChallengeCreationPaused,
 
     ChallengeStartsTooSoon,
@@ -13,6 +17,8 @@ pub enum ScreenWarErrors {
     ChallengeStartsTooFar,
 
     ChallengeExceedsTwoHours,
+
+    JoinedLate,
 }
 
 impl From<ScreenWarErrors> for ProgramError {
