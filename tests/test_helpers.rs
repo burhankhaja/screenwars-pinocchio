@@ -1,6 +1,6 @@
 pub use {
     litesvm::LiteSVM,
-    screenwars_pinocchio::{Global, ID},
+    screenwars_pinocchio::{Challenge, Global, User, ID},
     solana_clock::Clock,
     solana_instruction::{AccountMeta, Instruction},
     solana_keypair::Keypair,
@@ -9,12 +9,14 @@ pub use {
     solana_pubkey::Pubkey,
     solana_signer::Signer,
 };
+use {pinocchio::instruction, solana_program::native_token::Sol};
 
 pub const JAN_2025: i64 = 1735689600;
 pub const two_hours: i64 = 2 * (60 * 60);
 pub const one_day: i64 = two_hours * 12;
 pub const one_week: i64 = one_day * 7;
 pub const three_weeks: i64 = one_week * 3;
+pub const CHALLENGE_START_HELPER: i64 = JAN_2025 + one_day + 1;
 
 pub struct Env {
     pub litesvm: LiteSVM,
@@ -207,21 +209,95 @@ pub fn build_create_challenge_instruction(
 pub fn execute_create_challenge(
     env: &mut Env,
     creator_actor: &str,
-    challenge_id: u32,
+    challenge_id: u32, // dev : must be equal to current global.challenge_ids
     start_time: i64,
     daily_timer: i64,
 ) -> Result<(Pubkey, Pubkey), SolanaKiteError> {
     let creator = map_actor_from_id(&*env, creator_actor);
-    let creator_key = creator.pubkey();
-    let accounts = build_create_challenge_accounts(creator_key, challenge_id);
+    let accounts = build_create_challenge_accounts(creator.pubkey(), challenge_id);
     let instructions = build_create_challenge_instruction(start_time, daily_timer, accounts);
 
     send_transaction_from_instructions(
         &mut env.litesvm,
         vec![instructions],
         &[creator],
-        &creator_key,
+        &creator.pubkey(),
     )?;
 
     Ok((accounts.global_pda, accounts.challenge_pda))
+}
+
+#[derive(Clone, Copy)]
+pub struct JoinChallengeAccounts {
+    pub user: Pubkey,
+    pub challenge: Pubkey,
+    pub user_pda: Pubkey,
+    pub rent_sysvar: Pubkey,
+    pub system_program: Pubkey,
+}
+
+pub fn build_join_challenge_accounts(user: Pubkey, challenge_id: u32) -> JoinChallengeAccounts {
+    let program_id = get_program_id();
+    let (challenge, _) = get_pda_and_bump(
+        &[
+            b"challenge".as_ref().into(),
+            challenge_id.to_le_bytes().as_ref().into(),
+        ],
+        &program_id,
+    );
+    let (user_pda, _) = get_pda_and_bump(&[b"user".as_ref().into(), user.into()], &program_id);
+    let rent_sysvar = Pubkey::from(RENT_ID.to_bytes());
+    let system_program = Pubkey::from(SYSTEM_ID.to_bytes());
+
+    JoinChallengeAccounts {
+        user,
+        challenge,
+        user_pda,
+        rent_sysvar,
+        system_program,
+    }
+}
+
+pub fn build_join_challenge_instruction(
+    env: &mut Env,
+    accounts: JoinChallengeAccounts,
+    challenge_id: u32,
+) -> Instruction {
+    let program_id = get_program_id();
+
+    let accounts = vec![
+        AccountMeta::new(accounts.user, true),
+        AccountMeta::new(accounts.challenge, false),
+        AccountMeta::new(accounts.user_pda, false),
+        AccountMeta::new_readonly(accounts.rent_sysvar, false),
+        AccountMeta::new_readonly(accounts.system_program, false),
+    ];
+
+    let mut data = vec![2u8];
+    data.extend_from_slice(&challenge_id.to_le_bytes());
+
+    Instruction {
+        program_id,
+        accounts,
+        data,
+    }
+}
+
+pub fn execute_join_challenge(
+    env: &mut Env,
+    user_actor: &str,
+    challenge_id: u32,
+) -> Result<(Pubkey), SolanaKiteError> {
+    let user = map_actor_from_id(env, user_actor);
+    let accounts = build_join_challenge_accounts(user.pubkey(), challenge_id);
+    let instructions = build_join_challenge_instruction(env, accounts, challenge_id);
+
+    send_transaction_from_instructions(
+        &mut env.litesvm,
+        vec![instructions],
+        &[user],
+        &user.pubkey(),
+    )?;
+
+    Ok(accounts.user_pda)
 }
