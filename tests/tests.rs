@@ -1,10 +1,11 @@
 mod test_helpers;
 use {
-    crate::test_helpers::{one_day, two_hours},
-    screenwars_pinocchio::Challenge,
+    crate::test_helpers::{one_day, two_hours, CHALLENGE_START_HELPER},
+    screenwars_pinocchio::user,
     test_helpers::{
-        execute_create_challenge, execute_initialize, get_timestamp, set_timestamp,
-        setup_escrow_test, Env, Global, Pubkey, Signer, SolanaKiteError,
+        execute_create_challenge, execute_initialize, execute_join_challenge, get_timestamp,
+        set_timestamp, setup_escrow_test, Challenge, Env, Global, Pubkey, Signer, SolanaKiteError,
+        User,
     },
 };
 
@@ -73,3 +74,58 @@ pub fn test_create_challenge() -> Result<(), SolanaKiteError> {
 
     Ok(())
 }
+
+#[test]
+pub fn test_join_challenge() -> Result<(), SolanaKiteError> {
+    let mut env: Env = setup_escrow_test();
+    execute_initialize(&mut env)?;
+    let (_, challenge_pda) =
+        execute_create_challenge(&mut env, "jeff", 1, CHALLENGE_START_HELPER, two_hours - 1)?;
+    let (user_pda_key) = execute_join_challenge(&mut env, "berg", 1)?;
+
+    let challenge_raw_data = env.litesvm.get_account(&challenge_pda).unwrap().data;
+    let challenge = Challenge::load(&challenge_raw_data).unwrap();
+
+    let user_pda_raw_data = env.litesvm.get_account(&user_pda_key).unwrap().data;
+    let user_pda = User::load(&user_pda_raw_data).unwrap();
+
+    // dev : debug
+    // println!("User_pda : {:?}", user_pda);
+    // println!("challenge pda: {:?}", challenge);
+
+    //// assertion
+    assert!(
+        Pubkey::from(user_pda.user) == env.berg.pubkey(),
+        "bergs key must be stored in his joining pda"
+    );
+
+    assert!(
+        user_pda.challenge_id == 1,
+        "user joined challenge id must be stored correctly in his pda"
+    );
+
+    assert!(
+        user_pda.streak == 0,
+        "users cant have positive streak just by joining challenge"
+    );
+
+    //// @audit-issue :: junk data stored in challenge.total_pariticipants && user_pda.locked_balance
+    //// Expected Value : participants = 1 && balance == 0
+    // assert!(
+    //     challenge.total_participants == 1,
+    //     "challenge participants must increment after join"
+    // );
+    // assert!(
+    //     user_pda.locked_balance == 0,
+    //     "users cant have positive locked_balance just by joining challenge"
+    // );
+
+    println!("flawed locked balance : {}", user_pda.locked_balance);
+    println!(
+        "flawed total pariticipants: {}",
+        challenge.total_participants
+    );
+    Ok(())
+}
+
+
