@@ -11,7 +11,7 @@ pub struct ToggleChallengeCreation<'a> {
 }
 
 pub struct ToggleChallengeCreationAccounts<'a> {
-    pub user: &'a AccountInfo,
+    pub admin: &'a AccountInfo,
     pub global: &'a AccountInfo,
 }
 
