@@ -1,8 +1,8 @@
 #![no_std]
 
+pub mod custom_errors;
 pub mod instructions;
 pub mod state;
-pub mod custom_errors;
 
 pub use {
     custom_errors::ScreenWarErrors,
@@ -29,6 +29,10 @@ pub fn process_instruction(
         Some((CreateChallenge::DISCRIMINATOR, data)) => {
             CreateChallenge::try_from((_accounts, data))?.process()?
         }
+        Some((JoinChallenge::DISCRIMINATOR, data)) => {
+            JoinChallenge::try_from((_accounts, data))?.process()?
+        }
+
         _ => Err(ProgramError::InvalidInstructionData)?,
     }
     Ok(())
