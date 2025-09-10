@@ -19,6 +19,10 @@ pub enum ScreenWarErrors {
     ChallengeExceedsTwoHours,
 
     JoinedLate,
+
+    ContentionPhase,
+
+    NotEnrolled,
 }
 
 impl From<ScreenWarErrors> for ProgramError {
