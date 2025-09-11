@@ -6,11 +6,12 @@ use {
     pinocchio::{
         account_info::AccountInfo,
         program_error::ProgramError,
-        pubkey::Pubkey,
+        pubkey::{find_program_address, Pubkey},
         sysvars::{clock::Clock, Sysvar},
         ProgramResult,
     },
 };
+
 pub struct ClaimWinnerPosition<'a> {
     pub accounts: ClaimWinnerPositionAccounts<'a>,
     pub instruction_data: ClaimWinnerPositionInstructionData,
@@ -19,7 +20,8 @@ pub struct ClaimWinnerPosition<'a> {
 pub struct ClaimWinnerPositionAccounts<'a> {
     pub user: &'a AccountInfo,
     pub challenge: &'a AccountInfo,
-    pub user_account: &'a AccountInfo,
+    pub user_pda: &'a AccountInfo,
+    pub clock_sysvar: &'a AccountInfo,
 }
 
 pub struct ClaimWinnerPositionInstructionData {
@@ -32,18 +34,51 @@ impl<'a> TryFrom<(&'a [AccountInfo], &'a [u8])> for ClaimWinnerPosition<'a> {
     fn try_from(
         (accounts, instruction_data): (&'a [AccountInfo], &'a [u8]),
     ) -> Result<Self, Self::Error> {
-        todo!();
+        let accounts = ClaimWinnerPositionAccounts::try_from(accounts)?;
+        let instruction_data = ClaimWinnerPositionInstructionData::try_from(instruction_data)?;
+
+        // validate correct challenge pda
+        let (challenge_pda_key, _) = find_program_address(
+            &[b"challenge", &instruction_data.challenge_id.to_le_bytes()],
+            &crate::ID,
+        );
+
+        if challenge_pda_key.ne(accounts.challenge.key()) {
+            return Err(ScreenWarErrors::InvalidChallengePDA.into());
+        }
+
+        // return Self
+        Ok(Self {
+            accounts,
+            instruction_data,
+        })
     }
 }
 
-//@audit-issue :: add Signer validations otherwise anyone can get unauthorized access
 impl<'a> TryFrom<&'a [AccountInfo]> for ClaimWinnerPositionAccounts<'a> {
     type Error = ProgramError;
 
     fn try_from(accounts: &'a [AccountInfo]) -> Result<Self, Self::Error> {
-        //@audit-issue:: validate Challenge && User PDA
+        let [user, challenge, user_pda, clock_sysvar] = accounts else {
+            return Err(ProgramError::NotEnoughAccountKeys);
+        };
 
-        todo!();
+        if !user.is_signer() {
+            return Err(ScreenWarErrors::NotSigner.into());
+        }
+
+        let (user_pda_key, _) = find_program_address(&[b"user", user.key().as_slice()], &crate::ID);
+
+        if (&user_pda_key).ne(user_pda.key()) {
+            return Err(ScreenWarErrors::InvalidUserPDA.into());
+        };
+
+        Ok(Self {
+            user,
+            challenge,
+            user_pda,
+            clock_sysvar,
+        })
     }
 }
 
@@ -51,7 +86,13 @@ impl<'a> TryFrom<&'a [u8]> for ClaimWinnerPositionInstructionData {
     type Error = ProgramError;
 
     fn try_from(instruction_data: &'a [u8]) -> Result<Self, Self::Error> {
-        todo!();
+        if instruction_data.len().ne(&4usize) {
+            return Err(ProgramError::InvalidInstructionData);
+        }
+
+        let challenge_id = u32::from_le_bytes(instruction_data.try_into().unwrap());
+
+        Ok(Self { challenge_id })
     }
 }
 
@@ -63,7 +104,7 @@ impl<'a> ClaimWinnerPosition<'a> {
         let mut challenge_raw_data = self.accounts.challenge.try_borrow_mut_data()?;
         let challenge = Challenge::load_mut(&mut challenge_raw_data)?;
 
-        let user_pda_raw_data = self.accounts.user_account.try_borrow_data()?;
+        let user_pda_raw_data = self.accounts.user_pda.try_borrow_data()?;
         let user_pda = User::load(&user_pda_raw_data)?;
 
         // validations

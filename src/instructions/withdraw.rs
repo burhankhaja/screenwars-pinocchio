@@ -7,6 +7,7 @@ use {
         account_info::AccountInfo,
         instruction::{Seed, Signer},
         program_error::ProgramError,
+        pubkey::find_program_address,
         sysvars::{clock::Clock, Sysvar},
         ProgramResult,
     },
@@ -22,13 +23,14 @@ pub struct WithdrawAccounts<'a> {
     pub user: &'a AccountInfo,
     pub global: &'a AccountInfo,
     pub challenge: &'a AccountInfo,
-    pub user_account: &'a AccountInfo,
+    pub user_pda: &'a AccountInfo,
+    pub clock_sysvar: &'a AccountInfo,
     pub system_program: &'a AccountInfo,
     pub global_bump: u8,
 }
 
 pub struct WithdrawInstructionData {
-    pub amount: u64,
+    pub challenge_id: u32,
 }
 
 impl<'a> TryFrom<(&'a [AccountInfo], &'a [u8])> for Withdraw<'a> {
@@ -37,7 +39,24 @@ impl<'a> TryFrom<(&'a [AccountInfo], &'a [u8])> for Withdraw<'a> {
     fn try_from(
         (accounts, instruction_data): (&'a [AccountInfo], &'a [u8]),
     ) -> Result<Self, Self::Error> {
-        todo!();
+        let accounts = WithdrawAccounts::try_from(accounts)?;
+        let instruction_data = WithdrawInstructionData::try_from(instruction_data)?;
+
+        // validate correct challenge pda
+        let (challenge_pda_key, _) = find_program_address(
+            &[b"challenge", &instruction_data.challenge_id.to_le_bytes()],
+            &crate::ID,
+        );
+
+        if challenge_pda_key.ne(accounts.challenge.key()) {
+            return Err(ScreenWarErrors::InvalidChallengePDA.into());
+        }
+
+        // return Self
+        Ok(Self {
+            accounts,
+            instruction_data,
+        })
     }
 }
 
@@ -45,9 +64,34 @@ impl<'a> TryFrom<&'a [AccountInfo]> for WithdrawAccounts<'a> {
     type Error = ProgramError;
 
     fn try_from(accounts: &'a [AccountInfo]) -> Result<Self, Self::Error> {
-        //@audit-issue:: Dont forget to validate ALL PDAS IN TRY_FROM BLOCKS ??
+        let [user, global, challenge, user_pda, clock_sysvar, system_program] = accounts else {
+            return Err(ProgramError::NotEnoughAccountKeys);
+        };
 
-        todo!();
+        if !user.is_signer() {
+            return Err(ScreenWarErrors::NotSigner.into());
+        }
+
+        let (user_pda_key, _) = find_program_address(&[b"user", user.key().as_slice()], &crate::ID);
+
+        if (&user_pda_key).ne(user_pda.key()) {
+            return Err(ScreenWarErrors::InvalidUserPDA.into());
+        };
+
+        let (global_pda_key, global_bump) = find_program_address(&[b"global"], &crate::ID);
+        if global.key().ne(&global_pda_key) {
+            return Err(ProgramError::InvalidSeeds);
+        };
+
+        Ok(Self {
+            user,
+            global,
+            challenge,
+            user_pda,
+            clock_sysvar,
+            system_program,
+            global_bump,
+        })
     }
 }
 
@@ -55,7 +99,13 @@ impl<'a> TryFrom<&'a [u8]> for WithdrawInstructionData {
     type Error = ProgramError;
 
     fn try_from(instruction_data: &'a [u8]) -> Result<Self, Self::Error> {
-        todo!();
+        if instruction_data.len().ne(&4usize) {
+            return Err(ProgramError::InvalidInstructionData);
+        }
+
+        let challenge_id = u32::from_le_bytes(instruction_data.try_into().unwrap());
+
+        Ok(Self { challenge_id })
     }
 }
 
@@ -63,11 +113,11 @@ impl<'a> Withdraw<'a> {
     pub const DISCRIMINATOR: &'a u8 = &3;
 
     pub fn process(&mut self) -> ProgramResult {
-        // get the mutable reference to user and challenge pda datas
-        let challenge_raw_data = self.accounts.challenge.try_borrow_data()?;
-        let challenge = Challenge::load(&challenge_raw_data)?;
+        // get reference to user and challenge pda datas
+        let mut challenge_raw_data = self.accounts.challenge.try_borrow_mut_data()?;
+        let challenge = Challenge::load_mut(&mut challenge_raw_data)?;
 
-        let user_pda_raw_data = self.accounts.user_account.try_borrow_data()?;
+        let user_pda_raw_data = self.accounts.user_pda.try_borrow_data()?;
         let user_pda = User::load(&user_pda_raw_data)?;
 
         // validations
@@ -85,8 +135,8 @@ impl<'a> Withdraw<'a> {
             self.accounts.global_bump,
         )?;
 
-        // close challenge_pda
-        todo!();
+        // close user_pda
+        Self::close_user_pda(challenge)?;
 
         Ok(())
     }
@@ -138,5 +188,10 @@ impl<'a> Withdraw<'a> {
         }
 
         Ok(())
+    }
+
+    pub fn close_user_pda(challenge: &mut Challenge) -> ProgramResult {
+        todo!()
+        // Ok(())
     }
 }

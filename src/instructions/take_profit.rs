@@ -1,11 +1,13 @@
 use {
     crate::{state::Global, ScreenWarErrors},
     pinocchio::{
-        account_info::AccountInfo, program_error::ProgramError,  ProgramResult,
-        instruction::{Seed, Signer}
+        account_info::AccountInfo,
+        instruction::{Seed, Signer},
+        program_error::ProgramError,
+        pubkey::find_program_address,
+        ProgramResult,
     },
     pinocchio_system::instructions::Transfer,
-
 };
 
 pub struct TakeProfit<'a> {
@@ -30,18 +32,40 @@ impl<'a> TryFrom<(&'a [AccountInfo], &'a [u8])> for TakeProfit<'a> {
     fn try_from(
         (accounts, instruction_data): (&'a [AccountInfo], &'a [u8]),
     ) -> Result<Self, Self::Error> {
-        todo!();
+        let accounts = TakeProfitAccounts::try_from(accounts)?;
+        let instruction_data = TakeProfitInstructionData::try_from(instruction_data)?;
+
+        Ok(Self {
+            accounts,
+            instruction_data,
+        })
     }
 }
 
-//@audit-issue :: add Admin Signer validations otherwise anyone can get unauthorized access
 impl<'a> TryFrom<&'a [AccountInfo]> for TakeProfitAccounts<'a> {
     type Error = ProgramError;
 
     fn try_from(accounts: &'a [AccountInfo]) -> Result<Self, Self::Error> {
-        //@audit-issue:: validate Global Pda ?
+        let [admin, global, system_program] = accounts else {
+            return Err(ProgramError::NotEnoughAccountKeys);
+        };
 
-        todo!();
+        // dev : later admin key is validated against global.admin in validate_admin() function
+        if !admin.is_signer() {
+            return Err(ScreenWarErrors::NotSigner)?;
+        }
+
+        let (global_pda_key, global_bump) = find_program_address(&[b"global"], &crate::ID);
+        if global.key().ne(&global_pda_key) {
+            return Err(ProgramError::InvalidSeeds);
+        };
+
+        Ok(Self {
+            admin,
+            global,
+            system_program,
+            global_bump,
+        })
     }
 }
 
@@ -49,7 +73,13 @@ impl<'a> TryFrom<&'a [u8]> for TakeProfitInstructionData {
     type Error = ProgramError;
 
     fn try_from(instruction_data: &'a [u8]) -> Result<Self, Self::Error> {
-        todo!();
+        if instruction_data.len().ne(&8usize) {
+            return Err(ProgramError::InvalidInstructionData);
+        }
+
+        let amount = u64::from_le_bytes(instruction_data.try_into().unwrap());
+
+        Ok(Self { amount })
     }
 }
 
@@ -61,11 +91,19 @@ impl<'a> TakeProfit<'a> {
         let mut global_raw_data = self.accounts.global.try_borrow_mut_data()?;
         let global = Global::load_mut(&mut global_raw_data)?;
 
+        // validate admin
+        Self::validate_admin(global, self.accounts.admin)?;
+
         // validate protocol is solvent to payoff all user funds + rewards
         Self::validate_solvency(global.treasury_profits, self.instruction_data.amount)?;
 
         // transfer
-        Self::withdraw_from_treasury(self.accounts.global, self.accounts.admin, self.instruction_data.amount, self.accounts.global_bump)?;
+        Self::withdraw_from_treasury(
+            self.accounts.global,
+            self.accounts.admin,
+            self.instruction_data.amount,
+            self.accounts.global_bump,
+        )?;
 
         // decrease global profits
         Self::update_treasury_profits(global, self.instruction_data.amount)?;
@@ -80,8 +118,20 @@ impl<'a> TakeProfit<'a> {
         Ok(())
     }
 
-    pub fn withdraw_from_treasury(global: &AccountInfo, admin: &AccountInfo, amount: u64, global_bump: u8) -> ProgramResult {
-      
+    pub fn validate_admin(global: &mut Global, caller: &AccountInfo) -> ProgramResult {
+        if global.admin.ne(caller.key()) {
+            return Err(ScreenWarErrors::NotAdmin)?;
+        };
+
+        Ok(())
+    }
+
+    pub fn withdraw_from_treasury(
+        global: &AccountInfo,
+        admin: &AccountInfo,
+        amount: u64,
+        global_bump: u8,
+    ) -> ProgramResult {
         if amount > 0 {
             let global_bump_binding = [global_bump];
             let seeds = &[Seed::from(b"global"), Seed::from(&global_bump_binding)];
@@ -92,18 +142,18 @@ impl<'a> TakeProfit<'a> {
                 to: admin,
                 lamports: amount,
             }
-            .invoke_signed(&[global_pda_signature])?; 
+            .invoke_signed(&[global_pda_signature])?;
         }
 
         Ok(())
     }
 
     pub fn update_treasury_profits(global: &mut Global, amount: u64) -> ProgramResult {
-        global.treasury_profits = global.treasury_profits.checked_sub(amount).ok_or(ProgramError::ArithmeticOverflow)?; 
+        global.treasury_profits = global
+            .treasury_profits
+            .checked_sub(amount)
+            .ok_or(ScreenWarErrors::IntegerUnderflow)?;
 
         Ok(())
     }
-
-
-
 }

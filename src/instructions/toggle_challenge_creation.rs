@@ -1,7 +1,9 @@
 use {
     crate::{state::Global, ScreenWarErrors},
+    core::convert::TryFrom,
     pinocchio::{
-        account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey, ProgramResult,
+        account_info::AccountInfo, program_error::ProgramError, pubkey::find_program_address,
+        ProgramResult,
     },
 };
 
@@ -25,18 +27,35 @@ impl<'a> TryFrom<(&'a [AccountInfo], &'a [u8])> for ToggleChallengeCreation<'a> 
     fn try_from(
         (accounts, instruction_data): (&'a [AccountInfo], &'a [u8]),
     ) -> Result<Self, Self::Error> {
-        todo!();
+        let accounts = ToggleChallengeCreationAccounts::try_from(accounts)?;
+        let instruction_data = ToggleChallengeCreationInstructionData::try_from(instruction_data)?;
+
+        Ok(Self {
+            accounts,
+            instruction_data,
+        })
     }
 }
 
-//@audit-issue :: add Admin Signer validations otherwise anyone can get unauthorized access
 impl<'a> TryFrom<&'a [AccountInfo]> for ToggleChallengeCreationAccounts<'a> {
     type Error = ProgramError;
 
     fn try_from(accounts: &'a [AccountInfo]) -> Result<Self, Self::Error> {
-        //@audit-issue:: validate Global Pda ?
+        let [admin, global] = accounts else {
+            return Err(ProgramError::NotEnoughAccountKeys);
+        };
 
-        todo!();
+        // dev : later admin key is validated against global.admin in validate_admin() function
+        if !admin.is_signer() {
+            return Err(ScreenWarErrors::NotSigner)?;
+        }
+
+        let (global_pda_key, _) = find_program_address(&[b"global"], &crate::ID);
+        if global.key().ne(&global_pda_key) {
+            return Err(ProgramError::InvalidSeeds);
+        };
+
+        Ok(Self { admin, global })
     }
 }
 
@@ -44,7 +63,17 @@ impl<'a> TryFrom<&'a [u8]> for ToggleChallengeCreationInstructionData {
     type Error = ProgramError;
 
     fn try_from(instruction_data: &'a [u8]) -> Result<Self, Self::Error> {
-        todo!();
+        if instruction_data.len().ne(&1usize) {
+            return Err(ProgramError::InvalidInstructionData);
+        }
+
+        let pause = match instruction_data[0] {
+            0 => false,
+            1 => true,
+            _ => return Err(ProgramError::InvalidInstructionData),
+        };
+
+        Ok(Self { pause })
     }
 }
 
@@ -56,6 +85,9 @@ impl<'a> ToggleChallengeCreation<'a> {
         let mut global_raw_data = self.accounts.global.try_borrow_mut_data()?;
         let global = Global::load_mut(&mut global_raw_data)?;
 
+        // validate admin
+        Self::validate_admin(global, self.accounts.admin)?;
+
         // validate toggle
         if global
             .challenge_creation_paused
@@ -66,6 +98,14 @@ impl<'a> ToggleChallengeCreation<'a> {
 
         // toggle pause state
         global.challenge_creation_paused = self.instruction_data.pause;
+
+        Ok(())
+    }
+
+    pub fn validate_admin(global: &mut Global, caller: &AccountInfo) -> ProgramResult {
+        if global.admin.ne(caller.key()) {
+            return Err(ScreenWarErrors::NotAdmin)?;
+        };
 
         Ok(())
     }
