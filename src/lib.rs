@@ -2,11 +2,13 @@
 
 pub mod custom_errors;
 pub mod instructions;
+pub mod mock_oracle;
 pub mod state;
 
 pub use {
     custom_errors::ScreenWarErrors,
     instructions::*,
+    mock_oracle::*,
     pinocchio::{
         account_info::AccountInfo, entrypoint, nostd_panic_handler, program_error::ProgramError,
         ProgramResult,
