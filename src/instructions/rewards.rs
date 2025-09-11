@@ -29,7 +29,7 @@ pub struct ClaimRewardsAccounts<'a> {
 }
 
 pub struct ClaimRewardsInstructionData {
-    pub amount: u64,
+    pub challenge_id: u32,
 }
 
 impl<'a> TryFrom<(&'a [AccountInfo], &'a [u8])> for ClaimRewards<'a> {
