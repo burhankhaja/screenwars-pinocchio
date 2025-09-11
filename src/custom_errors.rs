@@ -23,6 +23,36 @@ pub enum ScreenWarErrors {
     ContentionPhase,
 
     NotEnrolled,
+
+    ChallengeNotEnded,
+
+    ContentionExpired,
+
+    LowerStreak,
+
+    ChallengeStateAlreadySet,
+
+    OverClaim,
+
+    NotWinner,
+
+    NotCreator,
+
+    AlreadySynced,
+
+    ChallengeNotStarted,
+
+    ChallengeEnded,
+
+    NotSigner,
+
+    NotAdmin,
+
+    IntegerBoundsExceeded,
+
+    IntegerUnderflow,
+
+    IntegerOverflow,
 }
 
 impl From<ScreenWarErrors> for ProgramError {
