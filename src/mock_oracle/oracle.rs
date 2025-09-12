@@ -1,8 +1,8 @@
-use {
-    pinocchio::program_error::ProgramError
-};
+use pinocchio::program_error::ProgramError;
 
-pub fn mock_offchain_oracle_component(debug: Option<DebugData>) -> Result<(bool, u8, bool), ProgramError> {
+pub fn mock_offchain_oracle_component(
+    debug: &Option<DebugData>,
+) -> Result<(bool, u8, bool), ProgramError> {
     let user_passed;
     let days_not_synced;
     let synced_today;
